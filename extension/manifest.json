@@ -1,0 +1,22 @@
+{
+  "manifest_version": 3,
+  "name": "Messages OTP Autofill",
+  "version": "1.0.0",
+  "description": "Fills one-time passcodes from the macOS Messages app into verification fields. Never submits the form.",
+  "minimum_chrome_version": "116",
+  "permissions": ["storage"],
+  "host_permissions": ["http://127.0.0.1/*"],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle",
+      "all_frames": true
+    }
+  ],
+  "options_page": "options.html"
+}
