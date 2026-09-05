@@ -11,7 +11,16 @@
 
   // ...and words that mean it is something else that merely sounds similar.
   const NEGATIVE_HINT =
-    /(search|query|e-?mail|phone|address|street|card[-_\s]?number|cvv|cvc|expir|zip|postal|coupon|promo|discount|gift[-_\s]?card|username|user[-_\s]?name|answer|question)/i;
+    /(search|query|address|street|card[-_\s]?number|cvv|cvc|expir|zip|postal|coupon|promo|discount|gift[-_\s]?card|username|user[-_\s]?name|answer|question)/i;
+
+  // "phone"/"email" usually mean the field WANTS a phone number or address —
+  // but on 2FA pages they often just name the channel the code was sent over
+  // (LinkedIn: id="input__phone_verification_pin", labels like "code we sent
+  // to your email"). Only veto on them when nothing marks the field as a code
+  // box outright.
+  const CHANNEL_HINT = /(?:^|[^a-z])(e-?mail|phone)(?:[^a-z]|$)/i;
+  const CODE_WORD =
+    /(?:^|[^a-z])(pin|code|otp|passcode|one[-_\s]?time|digits?)(?:[^a-z]|$)/i;
 
   let lastFillAt = 0;
 
@@ -75,7 +84,8 @@
     // Fall back to reading the field's own labelling.
     const guessed = inputs.find((el) => {
       const text = describe(el);
-      return OTP_HINT.test(text) && !NEGATIVE_HINT.test(text);
+      if (!OTP_HINT.test(text) || NEGATIVE_HINT.test(text)) return false;
+      return !CHANNEL_HINT.test(text) || CODE_WORD.test(text);
     });
     return guessed ? { kind: "single", el: guessed } : null;
   }

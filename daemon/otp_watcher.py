@@ -37,6 +37,19 @@ LOG_MAX_BYTES = 512 * 1024
 # Apple's Core Data epoch: 2001-01-01T00:00:00Z
 APPLE_EPOCH_OFFSET = 978307200
 
+
+def apple_date_to_unix(raw) -> float | None:
+    """Convert chat.db's message.date to a unix timestamp.
+
+    Modern macOS stores nanoseconds since the Core Data epoch; databases
+    migrated from very old versions can still hold plain seconds.
+    """
+    if not raw:
+        return None
+    if raw > 10**15:
+        raw = raw / 1e9
+    return raw + APPLE_EPOCH_OFFSET
+
 DEFAULT_CONFIG = {
     "port": 8787,
     "token": "",
@@ -454,7 +467,7 @@ def watch(store: Store, cfg: dict, state: "State") -> None:
             state.db_ok = False
             continue
 
-        for rowid, text, attributed, handle, _date, participants in rows:
+        for rowid, text, attributed, handle, date_raw, participants in rows:
             last_rowid = max(last_rowid, rowid)
             body = text or decode_attributed_body(attributed)
             if not body:
@@ -467,11 +480,29 @@ def watch(store: Store, cfg: dict, state: "State") -> None:
                 continue
 
             sender = guess_sender_label(body, handle)
+
+            # A row can surface in chat.db long after the message was sent —
+            # iCloud backfill and delayed SMS forwarding both replay old
+            # messages (seen live: a code re-appeared 16 minutes later and
+            # beat the fresh code to the claim). Stamp the code with when it
+            # was SENT, and drop it outright once that is past the TTL so a
+            # replay can never win a claim, overwrite the clipboard, or fire
+            # a notification.
+            now = time.time()
+            sent_at = apple_date_to_unix(date_raw)
+            received_at = min(sent_at, now) if sent_at else now
+            if now - received_at > store.ttl:
+                log(
+                    f"ignored stale code from {sender} "
+                    f"(sent {round(now - received_at)}s ago)"
+                )
+                continue
+
             entry = Code(
                 code=code,
                 sender=sender,
                 handle=handle or "",
-                received_at=time.time(),
+                received_at=received_at,
                 bound_host=bound_host,
             )
             if not store.add(entry):
